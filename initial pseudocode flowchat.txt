@@ -1,0 +1,108 @@
+┌─────────────────────────────────────────────────────────────┐
+│            POST-HOC DIAGNOSTIC ALGORITHM                    │
+│     (Applied After CSB-EWMA Signals at Time T*)           │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 1: DATA EXTRACTION                                     │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ INPUT: Binary data matrix X[i,t] for i=1...k, t=1...T* │ │
+│ │ EXTRACT: Stream-level binary indicators from CSB-EWMA   │ │
+│ │ COMPILED: All dichotomized observations through T*      │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 2: STREAM-LEVEL COUNT CALCULATION                      │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ FOR each stream i = 1 to k:                            │ │
+│ │   S[i] = Σ(t=1 to T*) X[i,t]                          │ │
+│ │   // Count exceedances above median for stream i       │ │
+│ │ END FOR                                                 │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 3: EXACT BINOMIAL P-VALUE CALCULATION                  │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ FOR each stream i = 1 to k:                            │ │
+│ │   p[i] = P(Binomial(T*, 0.5) ≥ S[i])                  │ │
+│ │   // Upper-tail probability using exact binomial       │ │
+│ │   p[i] = Σ(j=S[i] to T*) C(T*,j) × (0.5)^T*          │ │
+│ │ END FOR                                                 │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 4: MULTIPLE TESTING CORRECTIONS                        │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ // Apply five correction methods simultaneously         │ │
+│ │                                                         │ │
+│ │ p_bonf[i] = min(1, k × p[i])           // Bonferroni  │ │
+│ │                                                         │ │
+│ │ p_holm[i] = Holm_stepdown(p, α=0.05)   // Holm       │ │
+│ │                                                         │ │
+│ │ p_BH[i] = BenjaminiHochberg(p, α=0.05)  // B-H        │ │
+│ │                                                         │ │
+│ │ p_raw[i] = p[i]                         // No correction│ │
+│ │                                                         │ │
+│ │ max_prop = identify_max_proportion(S, T*)  // Heuristic│ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 5: STREAM IDENTIFICATION & FLAGGING                    │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ α = 0.05  // Significance threshold                     │ │
+│ │                                                         │ │
+│ │ FOR each method m in {bonf, holm, BH, raw, max_prop}: │ │
+│ │   FOR each stream i = 1 to k:                          │ │
+│ │     IF p_m[i] < α:                                     │ │
+│ │       Flag_m[i] = TRUE   // Stream i is OUT-OF-CONTROL │ │
+│ │     ELSE:                                              │ │
+│ │       Flag_m[i] = FALSE  // Stream i is IN-CONTROL    │ │
+│ │   END FOR                                              │ │
+│ │ END FOR                                                │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 6: PERFORMANCE EVALUATION                              │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ FOR each method m:                                      │ │
+│ │   // Calculate confusion matrix                         │ │
+│ │   TP[m] = Σ(Flag_m[i] AND TruthOOC[i])                │ │
+│ │   FP[m] = Σ(Flag_m[i] AND NOT TruthOOC[i])            │ │
+│ │   FN[m] = Σ(NOT Flag_m[i] AND TruthOOC[i])            │ │
+│ │   TN[m] = Σ(NOT Flag_m[i] AND NOT TruthOOC[i])        │ │
+│ │                                                         │ │
+│ │   // Calculate performance metrics                      │ │
+│ │   Sensitivity[m] = TP[m] / (TP[m] + FN[m])            │ │
+│ │   Specificity[m] = TN[m] / (TN[m] + FP[m])            │ │
+│ │   Type1Error[m]  = FP[m] / (FP[m] + TN[m])            │ │
+│ │   FDR[m] = FP[m] / (TP[m] + FP[m])                    │ │
+│ │ END FOR                                                │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 7: RECOMMENDATION & OUTPUT                             │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ // Based on simulation evidence from Chapter 5          │ │
+│ │ RECOMMENDED_METHOD = "Benjamini-Hochberg"               │ │
+│ │                                                         │ │
+│ │ RETURN:                                                 │ │
+│ │   - Flagged streams using BH correction                 │ │
+│ │   - All adjusted p-values for transparency              │ │
+│ │   - Performance metrics for all methods                 │ │
+│ │   - Diagnostic confidence intervals                     │ │
+│ │   - Recommended corrective actions                      │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
